@@ -1,65 +1,164 @@
-import Image from "next/image";
+"use client";
+
+import { useCallback, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MessageSquare, ShoppingCart, Mountain } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { ChatUI } from "@/components/chat/ChatUI";
+import { CartView } from "@/components/cart/CartView";
+import { CheckoutFlow } from "@/components/checkout/CheckoutFlow";
+import { useChat } from "@/hooks/useChat";
+import { useCart } from "@/hooks/useCart";
+import { useDiscovery } from "@/hooks/useDiscovery";
+import type { AppState, Category } from "@/lib/types";
 
 export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+  const chat = useChat();
+  const cart = useCart();
+  const discovery = useDiscovery();
+  const [showCheckout, setShowCheckout] = useState(false);
+
+  // Orchestrate the full pipeline when spec is confirmed
+  const handleConfirmSpec = useCallback(async () => {
+    if (!chat.spec) return;
+
+    chat.confirmSpec();
+
+    // Run discovery + ranking pipeline
+    const ranked = await discovery.runPipeline(chat.spec);
+
+    if (ranked) {
+      chat.updateFlowState("ranking" as AppState);
+      await cart.initializeCart(ranked);
+      chat.updateFlowState("cart_ready" as AppState);
+      chat.addMessage(
+        "assistant",
+        `Found and ranked products across ${new Set(
+          Object.values(ranked.ranked_by_category)
+            .flat()
+            .map((p) => p.product.retailer)
+        ).size}+ retailers! Your optimized cart is ready. Check it out on the right.`
+      );
+    } else {
+      chat.updateFlowState("idle" as AppState);
+      chat.addMessage(
+        "assistant",
+        "Sorry, I had trouble finding products. Please try again."
+      );
+    }
+  }, [chat, cart, discovery]);
+
+  const handleSwap = useCallback(
+    async (category: Category, productId: string) => {
+      await cart.swapItem(category, productId);
+    },
+    [cart]
+  );
+
+  const handleCheckout = () => setShowCheckout(true);
+  const handleBackFromCheckout = () => setShowCheckout(false);
+
+  const rightPanel = () => {
+    if (showCheckout && cart.cart) {
+      return (
+        <CheckoutFlow cart={cart.cart} onBack={handleBackFromCheckout} />
+      );
+    }
+
+    if (cart.cart) {
+      return (
+        <CartView
+          cart={cart.cart}
+          onSwap={handleSwap}
+          onCheckout={handleCheckout}
+          onOptimizeBudget={cart.optimizeForBudget}
+          onOptimizeDelivery={cart.optimizeForDelivery}
+          isOptimizing={cart.isLoading}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      );
+    }
+
+    // Empty state
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+        <Mountain className="h-16 w-16 text-muted-foreground/30 mb-4" />
+        <h3 className="text-lg font-semibold text-muted-foreground">
+          Your Cart
+        </h3>
+        <p className="text-sm text-muted-foreground/60 mt-2 max-w-xs">
+          Tell the agent what you want to buy and products will appear here
+          after discovery.
+        </p>
+        {(chat.flowState === "discovering" || chat.flowState === "ranking") && (
+          <div className="mt-6 w-full max-w-xs space-y-3">
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="h-screen h-dvh flex flex-col overflow-hidden">
+      {/* Mobile: Tabbed layout — responsive with touch-friendly targets */}
+      <div className="md:hidden flex-1 min-h-0 flex flex-col">
+        <Tabs defaultValue="chat" className="h-full flex flex-col min-h-0">
+          <TabsList className="w-full rounded-none border-b shrink-0 h-12 px-2 gap-1">
+            <TabsTrigger value="chat" className="flex-1 gap-1.5 py-2.5 min-h-[44px]">
+              <MessageSquare className="h-4 w-4" />
+              Chat
+            </TabsTrigger>
+            <TabsTrigger value="cart" className="flex-1 gap-1.5 py-2.5 min-h-[44px]">
+              <ShoppingCart className="h-4 w-4" />
+              Cart
+              {cart.cart && (
+                <span className="ml-1 text-xs bg-primary text-primary-foreground rounded-full px-1.5 min-w-[1.25rem]">
+                  {cart.cart.items.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <ThemeToggle />
+          </TabsList>
+          <TabsContent value="chat" className="flex-1 m-0 min-h-0 overflow-hidden">
+            <ChatUI
+              messages={chat.messages}
+              isLoading={chat.isLoading}
+              flowState={chat.flowState}
+              progress={discovery.progress}
+              isRanking={discovery.isRanking}
+              onSendMessage={chat.sendMessage}
+              onConfirmSpec={handleConfirmSpec}
+              onReset={chat.resetChat}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </TabsContent>
+          <TabsContent value="cart" className="flex-1 m-0 min-h-0 overflow-hidden">
+            {rightPanel()}
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Desktop: Split view */}
+      <div className="hidden md:flex flex-1 min-h-0 overflow-hidden">
+        {/* Left: Chat (55%) */}
+        <div className="w-[55%] border-r min-h-0 flex flex-col">
+          <ChatUI
+            messages={chat.messages}
+            isLoading={chat.isLoading}
+            flowState={chat.flowState}
+            progress={discovery.progress}
+            isRanking={discovery.isRanking}
+            onSendMessage={chat.sendMessage}
+            onConfirmSpec={handleConfirmSpec}
+            onReset={chat.resetChat}
+          />
         </div>
-      </main>
+
+        {/* Right: Cart/Checkout (45%) */}
+        <div className="w-[45%] min-h-0 flex flex-col overflow-hidden">{rightPanel()}</div>
+      </div>
     </div>
   );
 }
