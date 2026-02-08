@@ -10,16 +10,50 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+/** Web Speech API: constructor type so we can extend Window without referencing a missing global. */
+type SpeechRecognitionCtor = new () => {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+};
+
+interface SpeechRecognitionResultEvent {
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  length: number;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
 declare global {
   interface Window {
-    SpeechRecognition?: typeof SpeechRecognition;
-    webkitSpeechRecognition?: typeof SpeechRecognition;
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
   }
 }
 
 const SpeechRecognitionAPI =
   typeof window !== "undefined"
-    ? window.SpeechRecognition || window.webkitSpeechRecognition
+    ? (window.SpeechRecognition || window.webkitSpeechRecognition) as SpeechRecognitionCtor | undefined
     : undefined;
 
 /** Desktop/laptop: click to start, click again to stop & send. Mobile/tablet: press to speak (fill input only). */
@@ -87,7 +121,7 @@ export function VoiceInputButton({
       }
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
       let transcript = "";
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
