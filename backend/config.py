@@ -8,7 +8,11 @@ class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
     OPENAI_API_KEY: str = ""
     MOCK_MODE: bool = False
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://agentic-commerce-git-main-karsos-projects.vercel.app",
+    ]
     MAX_INPUT_LENGTH: int = 500
     RATE_LIMIT: str = "30/minute"
 
