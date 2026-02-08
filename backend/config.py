@@ -12,6 +12,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:3001",
         "https://agentic-commerce-git-main-karsos-projects.vercel.app",
+        "agentic-commerce-alpha.vercel.app"
     ]
     MAX_INPUT_LENGTH: int = 500
     RATE_LIMIT: str = "30/minute"
