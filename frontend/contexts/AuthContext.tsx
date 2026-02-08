@@ -90,6 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("agentic-commerce-current-chat");
+      window.localStorage.removeItem("agentic-commerce-cart");
+      window.localStorage.removeItem("agentic-commerce-ranked");
     }
   }, []);
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Snowflake, RotateCcw } from "lucide-react";
+import { Send, Snowflake, Trash2 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChatMessage } from "./ChatMessage";
 import { ShoppingSpecCard } from "./ShoppingSpecCard";
@@ -63,8 +63,8 @@ export function ChatUI({
           <span className="hidden md:inline">
             <ThemeToggle />
           </span>
-          <Button variant="ghost" size="icon" onClick={onReset} className="h-8 w-8" aria-label="Reset chat">
-            <RotateCcw className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={onReset} className="h-8 w-8" aria-label="Delete history" title="Delete history">
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>

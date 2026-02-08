@@ -13,6 +13,7 @@ import { CheckoutFlow } from "@/components/checkout/CheckoutFlow";
 import { useChat } from "@/hooks/useChat";
 import { useCartContext } from "@/contexts/CartContext";
 import { useDiscovery } from "@/hooks/useDiscovery";
+import { addItemToCart } from "@/lib/api";
 import { useLikedProducts } from "@/hooks/useLikedProducts";
 import { useChatHistory, CHAT_SESSION_STORAGE_KEY } from "@/hooks/useChatHistory";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,17 +30,21 @@ export default function Home() {
   const [showCheckout, setShowCheckout] = useState(false);
   const previousUserIdRef = useRef<string | null | undefined>(undefined);
 
-  // When user changes (logout or switch account), reset chat so history is private per user
+  // When user changes (logout or switch account), reset chat and cart so each user has their own data
   useEffect(() => {
     const currentUserId = user?.id ?? null;
     if (previousUserIdRef.current !== undefined && previousUserIdRef.current !== currentUserId) {
       chat.resetChat();
+      cart.setCart(null);
+      cart.setRankedResults(null);
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("agentic-commerce-current-chat");
+        window.localStorage.removeItem("agentic-commerce-cart");
+        window.localStorage.removeItem("agentic-commerce-ranked");
       }
     }
     previousUserIdRef.current = currentUserId;
-  }, [user?.id, chat.resetChat]);
+  }, [user?.id, chat.resetChat, cart]);
 
   // On mount: restore from History (sessionStorage) or from localStorage only for guests
   useEffect(() => {
@@ -147,6 +152,20 @@ export default function Home() {
     [cart]
   );
 
+  const handleAddToCart = useCallback(
+    async (productUrl: string) => {
+      const res = await addItemToCart(productUrl);
+      cart.setCart(res.cart);
+      if (res.ranked_by_category && res.spec) {
+        cart.setRankedResults({
+          ranked_by_category: res.ranked_by_category,
+          spec: res.spec,
+        });
+      }
+    },
+    [cart]
+  );
+
   const handleCheckout = () => setShowCheckout(true);
   const handleBackFromCheckout = () => setShowCheckout(false);
 
@@ -168,6 +187,7 @@ export default function Home() {
           isOptimizing={cart.isLoading}
           isLiked={liked.isLiked}
           onLikeClick={handleLikeClick}
+          onAddToCart={handleAddToCart}
         />
       );
     }

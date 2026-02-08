@@ -17,6 +17,7 @@ interface CartViewProps {
   isOptimizing: boolean;
   isLiked?: (productId: string) => boolean;
   onLikeClick?: (product: Product) => void;
+  onAddToCart?: (productUrl: string) => Promise<void>;
 }
 
 export function CartView({
@@ -28,6 +29,7 @@ export function CartView({
   isOptimizing,
   isLiked,
   onLikeClick,
+  onAddToCart,
 }: CartViewProps) {
   const [swapCategory, setSwapCategory] = useState<Category | null>(null);
   const [swapCurrent, setSwapCurrent] = useState<ScoredProduct | null>(null);
@@ -67,6 +69,11 @@ export function CartView({
               onSwap={handleSwapOpen}
               isLiked={isLiked?.(item.selected.product.id)}
               onLikeClick={onLikeClick ? () => onLikeClick(item.selected.product) : undefined}
+              onAddToCart={
+                onAddToCart && item.selected.product.product_url
+                  ? () => onAddToCart(item.selected.product.product_url!)
+                  : undefined
+              }
             />
           ))}
 

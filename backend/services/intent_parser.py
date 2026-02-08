@@ -36,7 +36,7 @@ For hackathon/event hosting (e.g. "hosting a hackathon for 60 people", "need sna
 If the user's message is about shopping but is missing critical info (budget or other key details when relevant), respond with ONLY a JSON object:
 {"question": "<your clarifying question>", "is_clarification": true}
 
-Ask ONE focused clarifying question. Don't ask multiple questions at once.
+Ask ONE focused clarifying question. Don't ask multiple questions at once. When conversation history is provided, use it to infer what product or category the user wants. If the current message only adds budget, delivery, or preferences (e.g. "My budget is 1000 pound"), infer the product from earlier messages and output a full spec—do not ask "what type of shopping" or "what product" again. Ask only for info that is still missing (e.g. delivery date if not mentioned).
 
 Map what the user wants to the categories above. Use the category list exactly as given (snake_case). If the user asks for something that does not fit the list, use the closest match or a short snake_case product type (e.g. gpu for graphics cards).
 
@@ -49,15 +49,17 @@ Delivery deadline: You will be given today's date in the user message. If the us
 RESPOND WITH ONLY VALID JSON. No markdown, no code blocks, no extra text.""")
 
 
-async def parse_intent(message: str) -> ShoppingSpec | ClarifyingQuestion:
+async def parse_intent(message: str, history: list[dict] | None = None) -> ShoppingSpec | ClarifyingQuestion:
     """Parse a user message into a ShoppingSpec or ask a clarifying question.
 
     Uses OpenAI API when available, falls back to a mock spec otherwise.
+    history: optional list of {"role": "user"|"assistant", "content": str} for context.
     """
     sanitized = sanitize_input(message)
+    history = history or []
 
     if settings.MOCK_MODE or not settings.OPENAI_API_KEY:
-        return _mock_parse(sanitized)
+        return _mock_parse(sanitized, history=history)
 
     try:
         from openai import OpenAI
@@ -65,10 +67,15 @@ async def parse_intent(message: str) -> ShoppingSpec | ClarifyingQuestion:
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
         today_str = date.today().isoformat()
-        user_content = (
-            f"Today's date is {today_str}. Use this date when computing any relative delivery deadlines (e.g. 'within 5 days' -> {today_str} + 5 days).\n\n"
-            + wrap_user_input(sanitized)
-        )
+        parts = [
+            f"Today's date is {today_str}. Use this date when computing any relative delivery deadlines (e.g. 'within 5 days' -> {today_str} + 5 days).",
+        ]
+        if history:
+            conv = "\n".join(f"{t.get('role', 'user')}: {t.get('content', '')}" for t in history[-10:])
+            parts.append(f"Previous conversation:\n{conv}\n\nCurrent message:")
+        parts.append(wrap_user_input(sanitized))
+        user_content = "\n\n".join(parts)
+
         response = client.chat.completions.create(
             model="gpt-4o",
             max_tokens=1024,
@@ -112,7 +119,7 @@ async def parse_intent(message: str) -> ShoppingSpec | ClarifyingQuestion:
 
     except Exception as e:
         logger.error(f"OpenAI API error in parse_intent: {e}")
-        return _mock_parse(sanitized)
+        return _mock_parse(sanitized, history=history)
 
 
 def _extract_budget(message: str, msg_lower: str) -> float:
@@ -167,17 +174,24 @@ def _parse_size_from_message(msg_lower: str, message: str, has_size: bool) -> st
     return "N/A"
 
 
-def _mock_parse(message: str) -> ShoppingSpec | ClarifyingQuestion:
-    """Fallback mock parsing when OpenAI API is unavailable. Supports generic shopping (skiing, gaming, running, etc.)."""
+def _mock_parse(message: str, history: list[dict] | None = None) -> ShoppingSpec | ClarifyingQuestion:
+    """Fallback mock parsing when OpenAI API is unavailable. Supports generic shopping (any category)."""
     from datetime import date, timedelta
 
     from models.enums import Category
 
-    msg_lower = message.lower()
+    history = history or []
+    # Combine current message with recent history for context (e.g. "NVIDIA 5080" in history + "1000 pound" in message)
+    combined = " ".join(t.get("content", "") for t in history) + " " + message
+    msg_lower = combined.lower()
 
-    # Check for missing critical info
+    # Check for missing critical info (include pound/quid so "1000 pound" is recognized)
     has_budget = any(
-        w in msg_lower for w in ["$", "budget", "spend", "dollar", "usd", "400", "500", "300", "200", "100"]
+        w in msg_lower
+        for w in [
+            "$", "budget", "spend", "dollar", "usd", "pound", "pounds", "quid",
+            "400", "500", "300", "200", "100", "1000", "800", "600",
+        ]
     )
     has_size = any(
         w in msg_lower
@@ -209,8 +223,8 @@ def _mock_parse(message: str) -> ShoppingSpec | ClarifyingQuestion:
     elif "week" in msg_lower and ("within" in msg_lower or "in a week" in msg_lower or "deliver within" in msg_lower):
         deadline = date.today() + timedelta(days=7)
 
-    # Infer scenario and items from keywords (generic shopping)
-    if any(w in msg_lower for w in ["rtx", "gpu", "graphics card", "5090", "4080", "4090"]):
+    # Infer scenario and items from keywords (generic shopping); use combined text so history provides product context
+    if any(w in msg_lower for w in ["rtx", "gpu", "graphics card", "5090", "5080", "4080", "4090", "nvidia"]):
         scenario = "gaming_setup"
         items = [{"category": "gpu", "priority": "must_have", "requirements": []}]
         size = "N/A"  # electronics
@@ -249,8 +263,7 @@ def _mock_parse(message: str) -> ShoppingSpec | ClarifyingQuestion:
             {"category": "webcam", "priority": "nice_to_have", "requirements": []},
         ]
         size = "N/A"
-    else:
-        # Default: skiing outfit (or generic outdoor)
+    elif any(w in msg_lower for w in ["ski", "skiing", "snow", "slope", "jacket", "goggles", "resort"]):
         scenario = "skiing_outfit"
         items = [
             {"category": "jacket", "priority": "must_have", "requirements": ["waterproof", "warm"]},
@@ -259,6 +272,11 @@ def _mock_parse(message: str) -> ShoppingSpec | ClarifyingQuestion:
             {"category": "goggles", "priority": "must_have", "requirements": []},
         ]
         size = _parse_size_from_message(msg_lower, message, has_size)
+    else:
+        # No product category detected in message or history: ask what they want instead of assuming skiing
+        return ClarifyingQuestion(
+            question="What product or item are you looking for? For example: graphics card, laptop, running shoes, skiing gear, or office chair."
+        )
 
     return ShoppingSpec(
         scenario=scenario,

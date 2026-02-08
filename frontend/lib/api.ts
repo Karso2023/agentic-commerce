@@ -30,10 +30,35 @@ async function fetchAPI<T>(endpoint: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export interface TranscribeResponse {
+  text: string;
+}
+
+/** Send audio blob to backend; returns transcript via OpenAI Whisper. */
+export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeResponse> {
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "recording.webm");
+  const res = await fetch(`${API_URL}/api/transcribe`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(error.detail || `Transcription failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export async function parseIntent(
-  message: string
+  message: string,
+  history: ConversationTurn[] = []
 ): Promise<ShoppingSpec | ClarifyingQuestion> {
-  return fetchAPI("/parse-intent", { message });
+  return fetchAPI("/parse-intent", { message, history });
 }
 
 export async function discoverProducts(

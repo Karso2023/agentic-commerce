@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Star, Truck, ArrowRightLeft, BarChart3, ExternalLink, Heart } from "lucide-react";
+import { Star, Truck, ArrowRightLeft, BarChart3, ExternalLink, Heart, ShoppingCart } from "lucide-react";
 import { isValidProductUrl } from "@/lib/utils";
 import { RetailerBadge } from "@/components/shared/RetailerBadge";
 import { ProductImage } from "@/components/shared/ProductImage";
@@ -27,9 +27,11 @@ interface CartItemProps {
   onSwap: (category: Category) => void;
   isLiked?: boolean;
   onLikeClick?: () => void;
+  onAddToCart?: () => Promise<void>;
 }
 
-export function CartItemCard({ item, onSwap, isLiked, onLikeClick }: CartItemProps) {
+export function CartItemCard({ item, onSwap, isLiked, onLikeClick, onAddToCart }: CartItemProps) {
+  const [addingToCart, setAddingToCart] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(
     item.selected.explanation || null
   );
@@ -155,17 +157,47 @@ export function CartItemCard({ item, onSwap, isLiked, onLikeClick }: CartItemPro
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <RetailerBadge retailer={p.retailer} />
-                {isValidProductUrl(p.product_url) && (
-                  <a
-                    href={p.product_url!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    View on {p.retailer}
-                  </a>
+                {isValidProductUrl(p.product_url) ? (
+                  <>
+                    <a
+                      href={p.product_url!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs font-medium text-primary underline underline-offset-2 hover:no-underline inline-flex items-center gap-1"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View product on {p.retailer}
+                    </a>
+                    {onAddToCart && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 text-xs"
+                        disabled={addingToCart}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setAddingToCart(true);
+                          try {
+                            await onAddToCart();
+                          } finally {
+                            setAddingToCart(false);
+                          }
+                        }}
+                      >
+                        {addingToCart ? (
+                          "Adding…"
+                        ) : (
+                          <>
+                            <ShoppingCart className="h-3 w-3 mr-1" />
+                            Add to cart
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Link not available</span>
                 )}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground">

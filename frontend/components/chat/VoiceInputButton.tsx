@@ -9,67 +9,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { transcribeAudio } from "@/lib/api";
 
-/**
- * Uses the browser Web Speech API (SpeechRecognition), not OpenAI speech-to-text.
- * Types below: Web Speech API is not in TypeScript DOM lib, so we define our own.
- */
-type SpeechRecognitionCtor = new () => {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
-};
-
-interface SpeechRecognitionResultEvent {
-  results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionResultList {
-  length: number;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionResult {
-  length: number;
-  [index: number]: SpeechRecognitionAlternative;
-  isFinal: boolean;
-}
-
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-
-type WindowWithSpeech = Window & {
-  SpeechRecognition?: SpeechRecognitionCtor;
-  webkitSpeechRecognition?: SpeechRecognitionCtor;
-};
-
-function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as WindowWithSpeech;
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
-}
-
-const SpeechRecognitionAPI = getSpeechRecognitionCtor();
-
-/** Desktop/laptop: click to start, click again to stop & send. Mobile/tablet: press to speak (fill input only). */
+/** Desktop: click to start, click again to stop & send. Mobile: press to speak (fill input only). */
 function isDesktop(): boolean {
   if (typeof window === "undefined") return true;
   return !/Mobi|Tablet|Android/i.test(navigator.userAgent);
 }
 
 interface VoiceInputButtonProps {
-  /** Called when transcript is ready (mobile: fill input; desktop: also used if onStopWithSend not provided). */
   onTranscript: (text: string) => void;
-  /** On desktop: when user stops recording, call this to send the message immediately. */
   onStopWithSend?: (text: string) => void;
   disabled?: boolean;
 }
@@ -80,80 +29,87 @@ export function VoiceInputButton({
   disabled = false,
 }: VoiceInputButtonProps) {
   const [isListening, setIsListening] = useState(false);
-  const [supported] = useState(() => !!SpeechRecognitionAPI);
-  type RecognitionInstance = InstanceType<SpeechRecognitionCtor>;
-  const recognitionRef = useRef<RecognitionInstance | null>(null);
-  const transcriptRef = useRef("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const desktop = typeof window !== "undefined" && isDesktop();
   const sendOnStop = desktop && typeof onStopWithSend === "function";
 
-  const toggleListening = useCallback(() => {
-    if (!SpeechRecognitionAPI || disabled) return;
+  const toggleListening = useCallback(async () => {
+    if (disabled) return;
 
-    if (isListening) {
-      recognitionRef.current?.stop();
+    if (isListening || isTranscribing) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
       return;
     }
 
-    transcriptRef.current = "";
-    const recognition = new SpeechRecognitionAPI();
-    recognitionRef.current = recognition;
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
 
-    recognition.onstart = () => setIsListening(true);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
 
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setIsListening(false);
-      const text = transcriptRef.current.trim();
-      if (text) {
-        if (sendOnStop && onStopWithSend) {
-          onStopWithSend(text);
-        } else {
-          onTranscript(text);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+        setIsListening(false);
+        if (chunksRef.current.length === 0) return;
+        const blob = new Blob(chunksRef.current, { type: mime });
+        setIsTranscribing(true);
+        try {
+          const { text } = await transcribeAudio(blob);
+          const trimmed = text.trim();
+          if (trimmed) {
+            if (sendOnStop && onStopWithSend) {
+              onStopWithSend(trimmed);
+            } else {
+              onTranscript(trimmed);
+            }
+          }
+        } catch (err) {
+          console.warn("Transcription failed:", err);
+        } finally {
+          setIsTranscribing(false);
         }
-      }
-    };
+      };
 
-    recognition.onerror = (event: { error: string }) => {
-      recognitionRef.current = null;
-      setIsListening(false);
-      if (event.error !== "aborted") {
-        console.warn("Speech recognition error:", event.error);
-      }
-    };
-
-    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
-      let transcript = "";
-      for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
-      transcriptRef.current = transcript;
-    };
-
-    recognition.start();
-  }, [isListening, disabled, onTranscript, sendOnStop, onStopWithSend]);
+      recorder.start();
+      setIsListening(true);
+    } catch (err) {
+      console.warn("Microphone access failed:", err);
+    }
+  }, [isListening, isTranscribing, disabled, onTranscript, sendOnStop, onStopWithSend]);
 
   useEffect(() => {
     return () => {
-      recognitionRef.current?.abort();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
     };
   }, []);
 
-  if (!supported) {
-    return null;
-  }
-
+  const busy = isListening || isTranscribing;
   const tooltipText = desktop
-    ? isListening
-      ? "Click again to stop & send"
-      : "Click to start recording"
-    : isListening
-      ? "Listening… Press again to stop"
-      : "Press to speak";
+    ? busy
+      ? isTranscribing
+        ? "Transcribing..."
+        : "Click again to stop & send"
+      : "Click to start recording (OpenAI Whisper)"
+    : busy
+      ? isTranscribing
+        ? "Transcribing..."
+        : "Listening… Press again to stop"
+      : "Press to speak (OpenAI Whisper)";
 
   return (
     <TooltipProvider>
@@ -161,14 +117,14 @@ export function VoiceInputButton({
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant={isListening ? "default" : "outline"}
+            variant={busy ? "default" : "outline"}
             size="icon"
             disabled={disabled}
             onClick={toggleListening}
-            className={isListening ? "animate-pulse" : ""}
-            aria-label={isListening ? "Stop and send" : "Start voice input"}
+            className={busy ? "animate-pulse" : ""}
+            aria-label={busy ? "Stop and send" : "Start voice input"}
           >
-            {isListening ? (
+            {busy ? (
               <MicOff className="h-4 w-4" />
             ) : (
               <Mic className="h-4 w-4" />

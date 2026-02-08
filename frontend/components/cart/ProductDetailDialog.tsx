@@ -65,7 +65,6 @@ export function ProductDetailDialog({
   }, [product.product_url]);
 
   const hasValidLink = isValidProductUrl(product.product_url);
-  const showOpenLink = hasValidLink && (liveDetails !== undefined || !loading);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,6 +74,22 @@ export function ProductDetailDialog({
             {liveDetails?.name ?? product.name}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Always show link to actual product page when available */}
+        {hasValidLink && (
+          <a
+            href={product.product_url!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-md border bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10"
+          >
+            <ExternalLink className="h-4 w-4 shrink-0" />
+            View on {product.retailer} (opens in new tab)
+          </a>
+        )}
+        {!hasValidLink && (
+          <p className="text-xs text-muted-foreground">Product link not available.</p>
+        )}
 
         <div className="space-y-4">
           <div className="flex gap-3">
@@ -139,17 +154,6 @@ export function ProductDetailDialog({
               )}
               {fetchError && (
                 <p className="text-xs text-destructive">{fetchError}</p>
-              )}
-              {showOpenLink && (
-                <a
-                  href={product.product_url!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Open on {product.retailer}
-                </a>
               )}
             </div>
           )}

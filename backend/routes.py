@@ -1,10 +1,14 @@
 import asyncio
+import tempfile
 from datetime import date
-from fastapi import APIRouter, Request, HTTPException
+from pathlib import Path
+
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 
 from config import settings
 from models.schemas import (
     UserMessage,
+    ParseIntentRequest,
     ShoppingSpec,
     RankRequest,
     SwapRequest,
@@ -41,9 +45,34 @@ def _get_session(session_id: str = "default") -> dict:
     return _sessions[session_id]
 
 
+@router.post("/transcribe")
+async def api_transcribe(audio: UploadFile = File(..., description="Audio file (webm, mp3, wav, etc.)")):
+    """Transcribe audio to text using OpenAI Whisper. Requires OPENAI_API_KEY."""
+    if not settings.OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="Speech-to-text is not configured (missing OPENAI_API_KEY)")
+    content = await audio.read()
+    if not content or len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Audio file empty or too large (max 25 MB)")
+    suffix = Path(audio.filename or "audio").suffix or ".webm"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(content)
+        path = f.name
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        with open(path, "rb") as f:
+            transcription = client.audio.transcriptions.create(model="whisper-1", file=f)
+        return {"text": (transcription.text or "").strip()}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e}")
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 @router.post("/parse-intent")
-async def api_parse_intent(body: UserMessage):
-    result = await parse_intent(body.message)
+async def api_parse_intent(body: ParseIntentRequest):
+    history = [{"role": t.role, "content": t.content} for t in body.history]
+    result = await parse_intent(body.message, history=history)
     return result
 
 

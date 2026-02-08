@@ -116,6 +116,35 @@ export function useChatHistory(userId: string | undefined) {
     currentIdRef.current = null;
   }, []);
 
+  const deleteSession = useCallback(
+    async (id: string) => {
+      if (!userId) return;
+      const { error } = await supabase
+        .from("chat_history")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId);
+      if (error) throw new Error(error.message);
+      if (currentIdRef.current === id) currentIdRef.current = null;
+      await fetchSessions();
+    },
+    [userId, fetchSessions]
+  );
+
+  const deleteAllSessions = useCallback(
+    async () => {
+      if (!userId) return;
+      const { error } = await supabase
+        .from("chat_history")
+        .delete()
+        .eq("user_id", userId);
+      if (error) throw new Error(error.message);
+      currentIdRef.current = null;
+      await fetchSessions();
+    },
+    [userId, fetchSessions]
+  );
+
   return {
     sessions,
     loading,
@@ -123,6 +152,8 @@ export function useChatHistory(userId: string | undefined) {
     saveSession,
     debouncedSave,
     clearCurrentSessionId,
+    deleteSession,
+    deleteAllSessions,
     refetch: fetchSessions,
   };
 }

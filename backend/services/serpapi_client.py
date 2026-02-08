@@ -32,6 +32,8 @@ async def search_shopping(
 
         products = []
         for i, item in enumerate(shopping_results[:10]):
+            # SerpAPI returns "product_link" (Google Shopping page); "link" is used in some contexts for direct retailer URL
+            product_url = item.get("link") or item.get("product_link")
             product = Product(
                 id=f"serp-{item.get('product_id', f'unknown-{i}')}",
                 name=item.get("title", "Unknown Product"),
@@ -42,7 +44,7 @@ async def search_shopping(
                 reviews_count=item.get("reviews"),
                 delivery_text=item.get("delivery"),
                 image_url=item.get("thumbnail"),
-                product_url=item.get("link"),
+                product_url=product_url,
                 brand=_extract_brand(item.get("title", "")),
             )
             # Parse delivery days from delivery text

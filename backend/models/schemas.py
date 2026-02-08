@@ -39,6 +39,16 @@ class UserMessage(BaseModel):
     message: str = Field(..., max_length=500)
 
 
+class ConversationTurn(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class ParseIntentRequest(BaseModel):
+    message: str = Field(..., max_length=500)
+    history: list[ConversationTurn] = []
+
+
 class ClarifyingQuestion(BaseModel):
     question: str
     is_clarification: bool = True

@@ -49,7 +49,11 @@ export function useChat() {
       setFlowState("parsing");
 
       try {
-        const result = await parseIntent(text);
+        const history = messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .slice(-10)
+          .map((m) => ({ role: m.role, content: m.content }));
+        const result = await parseIntent(text, history);
 
         if (isClarification(result)) {
           setMessages((prev) => [
