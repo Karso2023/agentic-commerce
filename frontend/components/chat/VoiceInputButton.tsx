@@ -10,7 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-/** Web Speech API: constructor type so we can extend Window without referencing a missing global. */
+/** Web Speech API types (not in default DOM lib). */
 type SpeechRecognitionCtor = new () => {
   continuous: boolean;
   interimResults: boolean;
@@ -44,16 +44,14 @@ interface SpeechRecognitionAlternative {
   confidence: number;
 }
 
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  }
-}
+type WindowWithSpeech = Window & {
+  SpeechRecognition?: SpeechRecognitionCtor;
+  webkitSpeechRecognition?: SpeechRecognitionCtor;
+};
 
-const SpeechRecognitionAPI =
+const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
   typeof window !== "undefined"
-    ? (window.SpeechRecognition || window.webkitSpeechRecognition) as SpeechRecognitionCtor | undefined
+    ? (window as WindowWithSpeech).SpeechRecognition ?? (window as WindowWithSpeech).webkitSpeechRecognition
     : undefined;
 
 /** Desktop/laptop: click to start, click again to stop & send. Mobile/tablet: press to speak (fill input only). */
