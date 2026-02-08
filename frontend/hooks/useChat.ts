@@ -52,7 +52,7 @@ export function useChat() {
         const history = messages
           .filter((m) => m.role === "user" || m.role === "assistant")
           .slice(-10)
-          .map((m) => ({ role: m.role, content: m.content }));
+          .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
         const result = await parseIntent(text, history);
 
         if (isClarification(result)) {
