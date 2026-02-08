@@ -44,6 +44,16 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+@app.get("/")
+async def root():
+    return {
+        "service": "Agentic Commerce API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
+
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "mock_mode": settings.MOCK_MODE}
