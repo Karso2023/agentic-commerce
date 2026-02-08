@@ -4,6 +4,7 @@ import type {
   DiscoveryResults,
   RankedResults,
   Cart,
+  ScoredProduct,
   SwapRequest,
   ExplainRequest,
   Explanation,
@@ -66,8 +67,8 @@ export async function buildCart(rankedResults: RankedResults): Promise<Cart> {
 
 export interface AddItemToCartResponse {
   cart: Cart;
-  ranked_by_category: Record<string, unknown[]>;
-  spec: unknown;
+  ranked_by_category: Record<string, ScoredProduct[]>;
+  spec: ShoppingSpec;
 }
 
 /** Add a product to the cart by URL. Backend re-fetches current price and validates page. */

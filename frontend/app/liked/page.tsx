@@ -13,7 +13,6 @@ import { RetailerBadge } from "@/components/shared/RetailerBadge";
 import { ArrowLeft, ExternalLink, Heart, ShoppingCart, Copy, Check } from "lucide-react";
 import { isValidProductUrl } from "@/lib/utils";
 import { addItemToCart } from "@/lib/api";
-import type { RankedResults } from "@/lib/types";
 
 export default function LikedPage() {
   const router = useRouter();
@@ -142,7 +141,7 @@ export default function LikedPage() {
                                   if (res.ranked_by_category && res.spec) {
                                     cartContext.setRankedResults({
                                       ranked_by_category: res.ranked_by_category,
-                                      spec: res.spec as RankedResults["spec"],
+                                      spec: res.spec,
                                     });
                                   }
                                   router.push("/");
