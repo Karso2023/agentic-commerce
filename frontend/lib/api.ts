@@ -41,15 +41,38 @@ export async function discoverProducts(
   return fetchAPI("/discover", spec);
 }
 
+export interface LikedSnapshot {
+  id: string;
+  name: string;
+  retailer: string;
+  price: number;
+}
+
 export async function rankProducts(
   discoveryResults: DiscoveryResults,
-  spec: ShoppingSpec
+  spec: ShoppingSpec,
+  likedSnapshots?: LikedSnapshot[] | null
 ): Promise<RankedResults> {
-  return fetchAPI("/rank", { discovery_results: discoveryResults, spec });
+  return fetchAPI("/rank", {
+    discovery_results: discoveryResults,
+    spec,
+    liked_snapshots: likedSnapshots ?? undefined,
+  });
 }
 
 export async function buildCart(rankedResults: RankedResults): Promise<Cart> {
   return fetchAPI("/cart/build", rankedResults);
+}
+
+export interface AddItemToCartResponse {
+  cart: Cart;
+  ranked_by_category: Record<string, unknown[]>;
+  spec: unknown;
+}
+
+/** Add a product to the cart by URL. Backend re-fetches current price and validates page. */
+export async function addItemToCart(productUrl: string): Promise<AddItemToCartResponse> {
+  return fetchAPI("/cart/add-item", { product_url: productUrl });
 }
 
 export async function swapCartItem(request: SwapRequest): Promise<Cart> {

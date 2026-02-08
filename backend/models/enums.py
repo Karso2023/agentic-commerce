@@ -29,6 +29,13 @@ class Category(str, Enum):
     TABLET = "tablet"
     SPEAKERS = "speakers"
     GPU = "gpu"
+    # Hackathon / events
+    SNACKS = "snacks"
+    BADGES = "badges"
+    ADAPTERS = "adapters"
+    DECORATIONS = "decorations"
+    PRIZES = "prizes"
+    CUSTOM = "custom"  # single item added from liked / manual
 
 
 class Priority(str, Enum):

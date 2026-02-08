@@ -76,6 +76,7 @@ class ScoreBreakdown(BaseModel):
     delivery: float = Field(description="Out of 25")
     preference: float = Field(description="Out of 10")
     coherence: float = Field(description="Out of 5")
+    user_preference: float = Field(default=0, description="Out of 5 — recommender from liked items")
 
 
 class ScoredProduct(BaseModel):
@@ -88,6 +89,7 @@ class ScoredProduct(BaseModel):
         "delivery": 25,
         "preference": 10,
         "coherence": 5,
+        "user_preference": 5,
     }
     rank: int = 0
     explanation: str | None = None
@@ -117,9 +119,18 @@ class DiscoveryResults(BaseModel):
     products_by_category: dict[str, list[Product]]
 
 
+class LikedSnapshot(BaseModel):
+    """Minimal product snapshot from user's liked list for recommender."""
+    id: str = ""
+    name: str = ""
+    retailer: str = ""
+    price: float = 0.0
+
+
 class RankRequest(BaseModel):
     discovery_results: DiscoveryResults
     spec: ShoppingSpec
+    liked_snapshots: list[LikedSnapshot] | None = None
 
 
 class RankedResults(BaseModel):

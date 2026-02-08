@@ -1,32 +1,123 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageSquare, ShoppingCart, Mountain } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AppHeader } from "@/components/AppHeader";
 import { ChatUI } from "@/components/chat/ChatUI";
 import { CartView } from "@/components/cart/CartView";
 import { CheckoutFlow } from "@/components/checkout/CheckoutFlow";
 import { useChat } from "@/hooks/useChat";
-import { useCart } from "@/hooks/useCart";
+import { useCartContext } from "@/contexts/CartContext";
 import { useDiscovery } from "@/hooks/useDiscovery";
-import type { AppState, Category } from "@/lib/types";
+import { useLikedProducts } from "@/hooks/useLikedProducts";
+import { useChatHistory, CHAT_SESSION_STORAGE_KEY } from "@/hooks/useChatHistory";
+import { useAuth } from "@/contexts/AuthContext";
+import type { AppState, Category, ChatMessage, Product } from "@/lib/types";
 
 export default function Home() {
   const chat = useChat();
-  const cart = useCart();
+  const cart = useCartContext();
   const discovery = useDiscovery();
+  const pathname = usePathname();
+  const { user } = useAuth();
+  const liked = useLikedProducts(user?.id);
+  const chatHistory = useChatHistory(user?.id);
   const [showCheckout, setShowCheckout] = useState(false);
+  const previousUserIdRef = useRef<string | null | undefined>(undefined);
 
-  // Orchestrate the full pipeline when spec is confirmed
+  // When user changes (logout or switch account), reset chat so history is private per user
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+    if (previousUserIdRef.current !== undefined && previousUserIdRef.current !== currentUserId) {
+      chat.resetChat();
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("agentic-commerce-current-chat");
+      }
+    }
+    previousUserIdRef.current = currentUserId;
+  }, [user?.id, chat.resetChat]);
+
+  // On mount: restore from History (sessionStorage) or from localStorage only for guests
+  useEffect(() => {
+    const fromHistory = sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+    if (fromHistory) {
+      try {
+        const { messages } = JSON.parse(fromHistory) as { messages: unknown[] };
+        sessionStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+        if (Array.isArray(messages) && messages.length) chat.loadSession(messages as ChatMessage[]);
+      } catch {
+        sessionStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+      }
+      return;
+    }
+    if (user) return;
+    const chatRaw = typeof window !== "undefined" ? localStorage.getItem("agentic-commerce-current-chat") : null;
+    if (chatRaw) {
+      try {
+        const parsed = JSON.parse(chatRaw) as ChatMessage[];
+        if (Array.isArray(parsed) && parsed.length) chat.loadSession(parsed);
+      } catch {
+        localStorage.removeItem("agentic-commerce-current-chat");
+      }
+    }
+  }, [chat.loadSession, user]);
+
+  // Auto-save chat for logged-in users (debounced) to Supabase
+  useEffect(() => {
+    if (!user) return;
+    chatHistory.debouncedSave(chat.messages);
+  }, [user, chat.messages, chatHistory.debouncedSave]);
+
+  // Persist current chat to localStorage so it survives navigation (debounced)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (chat.messages.length === 0) return;
+      const toStore = chat.messages.map((m) => ({
+        ...m,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+      }));
+      localStorage.setItem("agentic-commerce-current-chat", JSON.stringify(toStore));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [chat.messages]);
+
+  const handleResetChat = useCallback(() => {
+    chat.resetChat();
+    chatHistory.clearCurrentSessionId();
+  }, [chat, chatHistory]);
+
+  const handleLikeClick = useCallback(
+    (product: Product) => {
+      if (user) {
+        liked.toggle(product);
+      } else {
+        window.location.href = `/register?redirect=${encodeURIComponent(pathname ?? "/")}`;
+      }
+    },
+    [user, pathname, liked]
+  );
+
+  // Orchestrate the full pipeline when spec is confirmed (pass liked items for recommender)
   const handleConfirmSpec = useCallback(async () => {
     if (!chat.spec) return;
 
     chat.confirmSpec();
 
+    const likedSnapshots = user
+      ? liked.items.map((row) => ({
+          id: row.product_snapshot.id,
+          name: row.product_snapshot.name,
+          retailer: row.product_snapshot.retailer,
+          price: row.product_snapshot.price,
+        }))
+      : undefined;
+
     // Run discovery + ranking pipeline
-    const ranked = await discovery.runPipeline(chat.spec);
+    const ranked = await discovery.runPipeline(chat.spec, likedSnapshots);
 
     if (ranked) {
       chat.updateFlowState("ranking" as AppState);
@@ -47,7 +138,7 @@ export default function Home() {
         "Sorry, I had trouble finding products. Please try again."
       );
     }
-  }, [chat, cart, discovery]);
+  }, [chat, cart, discovery, user, liked.items]);
 
   const handleSwap = useCallback(
     async (category: Category, productId: string) => {
@@ -75,6 +166,8 @@ export default function Home() {
           onOptimizeBudget={cart.optimizeForBudget}
           onOptimizeDelivery={cart.optimizeForDelivery}
           isOptimizing={cart.isLoading}
+          isLiked={liked.isLiked}
+          onLikeClick={handleLikeClick}
         />
       );
     }
@@ -103,6 +196,7 @@ export default function Home() {
 
   return (
     <div className="h-screen h-dvh flex flex-col overflow-hidden">
+      <AppHeader />
       {/* Mobile: Tabbed layout — responsive with touch-friendly targets */}
       <div className="md:hidden flex-1 min-h-0 flex flex-col">
         <Tabs defaultValue="chat" className="h-full flex flex-col min-h-0">
@@ -129,9 +223,10 @@ export default function Home() {
               flowState={chat.flowState}
               progress={discovery.progress}
               isRanking={discovery.isRanking}
+              cart={cart.cart}
               onSendMessage={chat.sendMessage}
               onConfirmSpec={handleConfirmSpec}
-              onReset={chat.resetChat}
+              onReset={handleResetChat}
             />
           </TabsContent>
           <TabsContent value="cart" className="flex-1 m-0 min-h-0 overflow-hidden">
@@ -150,9 +245,10 @@ export default function Home() {
             flowState={chat.flowState}
             progress={discovery.progress}
             isRanking={discovery.isRanking}
+            cart={cart.cart}
             onSendMessage={chat.sendMessage}
             onConfirmSpec={handleConfirmSpec}
-            onReset={chat.resetChat}
+            onReset={handleResetChat}
           />
         </div>
 

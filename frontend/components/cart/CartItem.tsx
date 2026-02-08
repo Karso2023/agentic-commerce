@@ -11,7 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Star, Truck, ArrowRightLeft, BarChart3 } from "lucide-react";
+import { Star, Truck, ArrowRightLeft, BarChart3, ExternalLink, Heart } from "lucide-react";
+import { isValidProductUrl } from "@/lib/utils";
 import { RetailerBadge } from "@/components/shared/RetailerBadge";
 import { ProductImage } from "@/components/shared/ProductImage";
 import { ScoreBreakdown } from "@/components/ranking/ScoreBreakdown";
@@ -24,9 +25,11 @@ import { explainRanking } from "@/lib/api";
 interface CartItemProps {
   item: CartItemType;
   onSwap: (category: Category) => void;
+  isLiked?: boolean;
+  onLikeClick?: () => void;
 }
 
-export function CartItemCard({ item, onSwap }: CartItemProps) {
+export function CartItemCard({ item, onSwap, isLiked, onLikeClick }: CartItemProps) {
   const [explanation, setExplanation] = useState<string | null>(
     item.selected.explanation || null
   );
@@ -70,7 +73,9 @@ export function CartItemCard({ item, onSwap }: CartItemProps) {
               className="text-left flex gap-3 flex-1 min-w-0 rounded-md hover:bg-muted/50 transition-colors -m-1 p-1"
               aria-label={`View details for ${p.name}`}
             >
-              <ProductImage src={p.image_url} alt={p.name} size="md" className="shrink-0" />
+              <div className="shrink-0">
+                <ProductImage src={p.image_url} alt={p.name} size="md" />
+              </div>
 
               <div className="flex-1 min-w-0 space-y-2">
                 {/* Header row */}
@@ -83,7 +88,24 @@ export function CartItemCard({ item, onSwap }: CartItemProps) {
                       {p.name}
                     </p>
                   </div>
-              <Dialog>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onLikeClick != null && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLikeClick();
+                        }}
+                        aria-label={isLiked ? "Remove from liked" : "Add to liked"}
+                      >
+                        <Heart
+                          className={`h-4 w-4 ${isLiked ? "fill-red-500 text-red-500" : ""}`}
+                        />
+                      </Button>
+                    )}
+                    <Dialog>
                 <DialogTrigger asChild>
                   <Button
                     variant="outline"
@@ -112,6 +134,7 @@ export function CartItemCard({ item, onSwap }: CartItemProps) {
                   />
                 </DialogContent>
               </Dialog>
+                  </div>
                 </div>
 
                 {/* Required: price, delivery estimate, variants, retailer */}
@@ -132,6 +155,18 @@ export function CartItemCard({ item, onSwap }: CartItemProps) {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <RetailerBadge retailer={p.retailer} />
+                {isValidProductUrl(p.product_url) && (
+                  <a
+                    href={p.product_url!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    View on {p.retailer}
+                  </a>
+                )}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground">
                 <span className="font-medium text-foreground/80">Variants:</span>

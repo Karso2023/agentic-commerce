@@ -6,7 +6,7 @@ import { Package } from "lucide-react";
 import { CartItemCard } from "./CartItem";
 import { CartSummary } from "./CartSummary";
 import { SwapDrawer } from "./SwapDrawer";
-import type { Cart, Category, ScoredProduct } from "@/lib/types";
+import type { Cart, Category, Product, ScoredProduct } from "@/lib/types";
 
 interface CartViewProps {
   cart: Cart;
@@ -15,6 +15,8 @@ interface CartViewProps {
   onOptimizeBudget: () => void;
   onOptimizeDelivery: () => void;
   isOptimizing: boolean;
+  isLiked?: (productId: string) => boolean;
+  onLikeClick?: (product: Product) => void;
 }
 
 export function CartView({
@@ -24,6 +26,8 @@ export function CartView({
   onOptimizeBudget,
   onOptimizeDelivery,
   isOptimizing,
+  isLiked,
+  onLikeClick,
 }: CartViewProps) {
   const [swapCategory, setSwapCategory] = useState<Category | null>(null);
   const [swapCurrent, setSwapCurrent] = useState<ScoredProduct | null>(null);
@@ -61,6 +65,8 @@ export function CartView({
               key={item.category}
               item={item}
               onSwap={handleSwapOpen}
+              isLiked={isLiked?.(item.selected.product.id)}
+              onLikeClick={onLikeClick ? () => onLikeClick(item.selected.product) : undefined}
             />
           ))}
 

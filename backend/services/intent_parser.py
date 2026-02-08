@@ -16,7 +16,7 @@ Output this exact JSON schema:
   "scenario": "<short scenario label, e.g. skiing_outfit, gaming_setup, running_gear, office_desk, casual_wear>",
   "items_needed": [
     {
-      "category": "<one of: jacket, pants, base_layer_top, base_layer_bottom, gloves, goggles, helmet, socks, neck_gaiter, headset, monitor, keyboard, laptop, gpu, running_shoes, sneakers, t_shirt, hoodie, bag, watch, desk_chair, webcam, phone, tablet, speakers>",
+      "category": "<one of: jacket, pants, base_layer_top, base_layer_bottom, gloves, goggles, helmet, socks, neck_gaiter, headset, monitor, keyboard, laptop, gpu, running_shoes, sneakers, t_shirt, hoodie, bag, watch, desk_chair, webcam, phone, tablet, speakers, snacks, badges, adapters, decorations, prizes>",
       "priority": "must_have" | "nice_to_have",
       "requirements": ["relevant descriptors for the product", ...]
     }
@@ -30,6 +30,8 @@ Output this exact JSON schema:
     "color_preferences": []
   }
 }
+
+For hackathon/event hosting (e.g. "hosting a hackathon for 60 people", "need snacks, badges, adapters, decorations, prizes"): infer items_needed as snacks, badges, adapters, decorations, prizes. Estimate budget from context (e.g. 60 people -> scale quantity or suggest a reasonable total). Only ask for clarification if budget is completely unclear; otherwise infer a reasonable range and set it.
 
 If the user's message is about shopping but is missing critical info (budget or other key details when relevant), respond with ONLY a JSON object:
 {"question": "<your clarifying question>", "is_clarification": true}
@@ -182,12 +184,23 @@ def _mock_parse(message: str) -> ShoppingSpec | ClarifyingQuestion:
         for w in ["small", "medium", "large", "xl", "xxl", "size m", "size l", "size s"]
     )
 
-    if not has_budget:
+    is_hackathon = any(w in msg_lower for w in ["hackathon", "hosting"]) or (
+        "snacks" in msg_lower or "badges" in msg_lower or "adapters" in msg_lower or "decorations" in msg_lower or "prizes" in msg_lower
+    )
+    if is_hackathon:
+        budget = _extract_budget(message, msg_lower)
+        people_match = re.search(r"(\d+)\s*people", msg_lower)
+        if people_match and not re.search(r"budget|\$|quid|dollar", msg_lower):
+            n = int(people_match.group(1))
+            budget = max(budget, min(1200, n * 20))
+        if budget < 100:
+            budget = 800
+    elif not has_budget:
         return ClarifyingQuestion(
             question="What's your total budget? For example: '$400' or 'budget $300'"
         )
-
-    budget = _extract_budget(message, msg_lower)
+    else:
+        budget = _extract_budget(message, msg_lower)
 
     deadline = date.today() + timedelta(days=5)
     days_match = re.search(r"(\d+)\s*days?", msg_lower)
@@ -216,6 +229,18 @@ def _mock_parse(message: str) -> ShoppingSpec | ClarifyingQuestion:
             {"category": "t_shirt", "priority": "nice_to_have", "requirements": ["moisture-wicking"]},
         ]
         size = _parse_size_from_message(msg_lower, message, has_size)
+    elif any(w in msg_lower for w in ["hackathon", "hosting", "60 people"]) or (
+        "snacks" in msg_lower or "badges" in msg_lower or "adapters" in msg_lower or "decorations" in msg_lower or "prizes" in msg_lower
+    ):
+        scenario = "hackathon_host"
+        items = [
+            {"category": "snacks", "priority": "must_have", "requirements": ["bulk", "event"]},
+            {"category": "badges", "priority": "must_have", "requirements": ["name", "lanyard"]},
+            {"category": "adapters", "priority": "must_have", "requirements": []},
+            {"category": "decorations", "priority": "nice_to_have", "requirements": []},
+            {"category": "prizes", "priority": "nice_to_have", "requirements": []},
+        ]
+        size = "N/A"
     elif any(w in msg_lower for w in ["office", "chair", "webcam"]):
         scenario = "office_desk"
         items = [

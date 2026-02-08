@@ -25,7 +25,13 @@ export type Category =
   | "phone"
   | "tablet"
   | "speakers"
-  | "gpu";
+  | "gpu"
+  | "snacks"
+  | "badges"
+  | "adapters"
+  | "decorations"
+  | "prizes"
+  | "custom";
 
 export type Priority = "must_have" | "nice_to_have";
 
@@ -55,6 +61,12 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   tablet: "Tablet",
   speakers: "Speakers",
   gpu: "GPU",
+  snacks: "Snacks",
+  badges: "Badges",
+  adapters: "Adapters",
+  decorations: "Decorations",
+  prizes: "Prizes",
+  custom: "Added from liked",
 };
 
 // --- Intent Parsing ---
@@ -120,6 +132,7 @@ export interface ScoreBreakdown {
   delivery: number;
   preference: number;
   coherence: number;
+  user_preference?: number;
 }
 
 export interface ScoredProduct {

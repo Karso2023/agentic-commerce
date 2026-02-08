@@ -123,6 +123,20 @@ export function useChat() {
     ]);
     setSpec(null);
     setFlowState("idle");
+    if (typeof window !== "undefined") window.localStorage.removeItem("agentic-commerce-current-chat");
+  }, []);
+
+  /** Restore chat from saved history (e.g. timestamps as ISO strings). */
+  const loadSession = useCallback((saved: ChatMessage[]) => {
+    const restored: ChatMessage[] = saved.map((m) => ({
+      ...m,
+      timestamp: typeof m.timestamp === "string" ? new Date(m.timestamp) : m.timestamp,
+    }));
+    setMessages(restored.length ? restored : [
+      createMessage("assistant", "Welcome back! Tell me what you want to buy."),
+    ]);
+    setSpec(null);
+    setFlowState("idle");
   }, []);
 
   return {
@@ -135,5 +149,6 @@ export function useChat() {
     updateFlowState,
     addMessage,
     resetChat,
+    loadSession,
   };
 }

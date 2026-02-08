@@ -6,6 +6,7 @@ import type {
   DiscoveryResults,
   RankedResults,
 } from "@/lib/types";
+import type { LikedSnapshot } from "@/lib/api";
 import { discoverProducts, rankProducts } from "@/lib/api";
 
 export interface DiscoveryProgress {
@@ -25,7 +26,8 @@ export function useDiscovery() {
 
   const runPipeline = useCallback(
     async (
-      spec: ShoppingSpec
+      spec: ShoppingSpec,
+      likedSnapshots?: LikedSnapshot[] | null
     ): Promise<RankedResults | null> => {
       setIsDiscovering(true);
       setIsRanking(false);
@@ -55,7 +57,7 @@ export function useDiscovery() {
         setIsDiscovering(false);
 
         setIsRanking(true);
-        const ranked = await rankProducts(results, spec);
+        const ranked = await rankProducts(results, spec, likedSnapshots);
         setRankedResults(ranked);
         setIsRanking(false);
 

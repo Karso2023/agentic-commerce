@@ -9,8 +9,10 @@ import { ChatMessage } from "./ChatMessage";
 import { ShoppingSpecCard } from "./ShoppingSpecCard";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { VoiceInputButton } from "./VoiceInputButton";
-import type { ChatMessage as ChatMessageType, AppState } from "@/lib/types";
+import type { Cart, ChatMessage as ChatMessageType, AppState } from "@/lib/types";
 import type { DiscoveryProgress } from "@/hooks/useDiscovery";
+import { isValidProductUrl } from "@/lib/utils";
+import { ExternalLink } from "lucide-react";
 
 interface ChatUIProps {
   messages: ChatMessageType[];
@@ -18,6 +20,7 @@ interface ChatUIProps {
   flowState: AppState;
   progress: DiscoveryProgress[];
   isRanking: boolean;
+  cart?: Cart | null;
   onSendMessage: (text: string) => void;
   onConfirmSpec: () => void;
   onReset: () => void;
@@ -29,6 +32,7 @@ export function ChatUI({
   flowState,
   progress,
   isRanking,
+  cart,
   onSendMessage,
   onConfirmSpec,
   onReset,
@@ -87,6 +91,38 @@ export function ChatUI({
               )}
             </div>
           ))}
+
+          {/* Product links when cart is ready — direct links to each item */}
+          {flowState === "cart_ready" && cart && cart.items.length > 0 && (
+            <div className="ml-11 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">View items:</p>
+              <ul className="flex flex-wrap gap-2">
+                {cart.items.map((item) => {
+                  const p = item.selected.product;
+                  const url = isValidProductUrl(p.product_url) ? p.product_url! : null;
+                  return (
+                    <li key={item.category}>
+                      {url ? (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2 hover:no-underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          {p.name} ({p.retailer})
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          {p.name} ({p.retailer})
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {/* Progress indicator during discovery */}
           {(flowState === "discovering" || flowState === "ranking") &&

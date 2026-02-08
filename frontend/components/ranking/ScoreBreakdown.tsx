@@ -17,6 +17,7 @@ const MAX_POSSIBLE: Record<string, number> = {
   delivery: 25,
   preference: 10,
   coherence: 5,
+  user_preference: 5,
 };
 
 export function ScoreBreakdown({
@@ -30,6 +31,9 @@ export function ScoreBreakdown({
     { label: "Delivery", score: breakdown.delivery, max: MAX_POSSIBLE.delivery },
     { label: "Preference", score: breakdown.preference, max: MAX_POSSIBLE.preference },
     { label: "Coherence", score: breakdown.coherence, max: MAX_POSSIBLE.coherence },
+    ...(breakdown.user_preference != null
+      ? [{ label: "User preference", score: breakdown.user_preference, max: MAX_POSSIBLE.user_preference }]
+      : []),
   ];
 
   if (compact) {

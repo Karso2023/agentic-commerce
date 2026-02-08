@@ -89,7 +89,8 @@ async def api_rank(request: RankRequest):
             )
 
         ranked = rank_products(
-            products, item_spec, spec.constraints, current_cart_products, num_categories
+            products, item_spec, spec.constraints, current_cart_products, num_categories,
+            liked_snapshots=request.liked_snapshots or None,
         )
         ranked_by_category[category_str] = ranked
 
@@ -124,6 +125,93 @@ async def api_build_cart(request: dict):
     session["ranked"] = parsed_ranked
 
     return cart
+
+
+@router.post("/cart/add-item")
+async def api_add_item_to_cart(body: dict):
+    """Add a single product to the cart by URL. Re-fetches current price and validates page is still available."""
+    import hashlib
+    from urllib.parse import urlparse
+    from models.enums import Category
+    from models.schemas import Product, ScoredProduct, ScoreBreakdown
+    from services.scraper import extract_schema_product
+    from services.checkout import build_cart
+
+    url = body.get("product_url") or body.get("url")
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=400, detail="product_url is required")
+    if not is_valid_product_url(url):
+        raise HTTPException(status_code=400, detail="Invalid product URL")
+    if not await asyncio.to_thread(product_url_still_valid, url):
+        raise HTTPException(
+            status_code=400,
+            detail="Product no longer available or page unavailable",
+        )
+
+    schema = await asyncio.to_thread(extract_schema_product, url.strip())
+    if not schema:
+        raise HTTPException(status_code=422, detail="Could not fetch product details from page")
+
+    name = schema.get("name") or "Product"
+    try:
+        price = float(schema.get("price") or 0)
+    except (TypeError, ValueError):
+        price = 0.0
+    domain = urlparse(url).netloc or "unknown"
+    retailer = domain.replace("www.", "").split(".")[0].title()
+    product_id = "custom_" + hashlib.sha256(url.encode()).hexdigest()[:12]
+
+    product = Product(
+        id=product_id,
+        name=name,
+        retailer=retailer,
+        price=price,
+        image_url=schema.get("image"),
+        product_url=url,
+        brand=schema.get("brand"),
+        description=schema.get("description"),
+    )
+    breakdown = ScoreBreakdown(
+        reviews=17.5, price=12.5, delivery=12.5, preference=5, coherence=2.5, user_preference=0
+    )
+    scored = ScoredProduct(
+        product=product,
+        total_score=50.0,
+        breakdown=breakdown,
+        rank=1,
+    )
+
+    session = _get_session()
+    ranked = session.get("ranked") or {}
+    spec = session.get("spec")
+    budget = spec.constraints.budget.total if spec else 1000.0
+
+    cat_key = "custom"
+    if cat_key not in ranked:
+        ranked[cat_key] = []
+    ranked[cat_key].insert(0, scored)
+    session["ranked"] = ranked
+
+    cart = build_cart(ranked, budget)
+    ranked_dump = {k: [p.model_dump() for p in v] for k, v in ranked.items()}
+    minimal_spec = {
+        "scenario": "custom",
+        "items_needed": [],
+        "constraints": {
+            "budget": {"total": budget, "currency": "USD"},
+            "size": "N/A",
+            "delivery_deadline": date.today().isoformat(),
+            "style_preferences": [],
+            "brand_preferences": [],
+            "color_preferences": [],
+        },
+    }
+    spec_dump = spec.model_dump() if spec else minimal_spec
+    return {
+        "cart": cart.model_dump(),
+        "ranked_by_category": ranked_dump,
+        "spec": spec_dump,
+    }
 
 
 @router.post("/cart/swap")

@@ -7,7 +7,25 @@ from models.schemas import (
     Constraints,
     ScoredProduct,
     ScoreBreakdown,
+    LikedSnapshot,
 )
+
+
+def _user_preference_score(product: Product, liked_snapshots: list[LikedSnapshot]) -> float:
+    """0-5 score: boost products similar to user's liked items (retailer + price similarity)."""
+    if not liked_snapshots:
+        return 0.0
+    preferred_retailers = {s.retailer.lower() for s in liked_snapshots if s.retailer}
+    avg_liked_price = sum(s.price for s in liked_snapshots) / max(len(liked_snapshots), 1)
+    retailer_match = 1.0 if (product.retailer or "").lower() in preferred_retailers else 0.0
+    if avg_liked_price <= 0:
+        price_sim = 0.5
+    else:
+        price_diff = abs(product.price - avg_liked_price) / avg_liked_price
+        price_sim = max(0, 1.0 - price_diff)
+    # Cosine-style blend: weight retailer and price
+    raw = 0.6 * retailer_match + 0.4 * price_sim
+    return round(min(5.0, raw * 5), 1)
 
 
 def score_product(
@@ -16,6 +34,7 @@ def score_product(
     constraints: Constraints,
     current_cart: list[Product],
     num_categories: int,
+    liked_snapshots: list[LikedSnapshot] | None = None,
 ) -> ScoredProduct:
     """Score a product using the transparent weighted algorithm.
 
@@ -71,8 +90,10 @@ def score_product(
         ).lower()
         matched = sum(1 for req in item_spec.requirements if req.lower() in searchable)
         pref_score = matched / len(item_spec.requirements)
+        if pref_score == 0:
+            pref_score = 0.1  # minimum so "preference" is never 0/10 (we considered it)
     else:
-        pref_score = 0.5
+        pref_score = 0.5  # no requirements -> neutral 5/10
 
     # --- SET COHERENCE (5%) ---
     coherence_score = 0.5
@@ -90,13 +111,17 @@ def score_product(
                 coherence_score += 0.2
         coherence_score = min(1.0, coherence_score)
 
-    # --- COMPOSITE ---
+    # --- USER PREFERENCE / RECOMMENDER (5%) ---
+    user_pref = _user_preference_score(product, liked_snapshots or [])
+
+    # --- COMPOSITE (total max 105 with user_preference) ---
     total = (
         0.35 * review_score
         + 0.25 * price_score
         + 0.25 * delivery_score
         + 0.10 * pref_score
         + 0.05 * coherence_score
+        + (user_pref / 5.0) * 0.05
     )
 
     return ScoredProduct(
@@ -108,6 +133,7 @@ def score_product(
             delivery=round(delivery_score * 25, 1),
             preference=round(pref_score * 10, 1),
             coherence=round(coherence_score * 5, 1),
+            user_preference=user_pref,
         ),
     )
 
@@ -118,10 +144,12 @@ def rank_products(
     constraints: Constraints,
     current_cart: list[Product],
     num_categories: int,
+    liked_snapshots: list[LikedSnapshot] | None = None,
 ) -> list[ScoredProduct]:
     """Score and rank a list of products. Returns sorted by total_score descending."""
+    liked = liked_snapshots or []
     scored = [
-        score_product(product, item_spec, constraints, current_cart, num_categories)
+        score_product(product, item_spec, constraints, current_cart, num_categories, liked)
         for product in products
     ]
     scored.sort(key=lambda s: s.total_score, reverse=True)
