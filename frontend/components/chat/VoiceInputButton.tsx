@@ -10,7 +10,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-/** Web Speech API types (not in default DOM lib). */
+/**
+ * Uses the browser Web Speech API (SpeechRecognition), not OpenAI speech-to-text.
+ * Types below: Web Speech API is not in TypeScript DOM lib, so we define our own.
+ */
 type SpeechRecognitionCtor = new () => {
   continuous: boolean;
   interimResults: boolean;
@@ -49,10 +52,13 @@ type WindowWithSpeech = Window & {
   webkitSpeechRecognition?: SpeechRecognitionCtor;
 };
 
-const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
-  typeof window !== "undefined"
-    ? (window as WindowWithSpeech).SpeechRecognition ?? (window as WindowWithSpeech).webkitSpeechRecognition
-    : undefined;
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as WindowWithSpeech;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
+}
+
+const SpeechRecognitionAPI = getSpeechRecognitionCtor();
 
 /** Desktop/laptop: click to start, click again to stop & send. Mobile/tablet: press to speak (fill input only). */
 function isDesktop(): boolean {
@@ -75,7 +81,8 @@ export function VoiceInputButton({
 }: VoiceInputButtonProps) {
   const [isListening, setIsListening] = useState(false);
   const [supported] = useState(() => !!SpeechRecognitionAPI);
-  const recognitionRef = useRef<InstanceType<NonNullable<typeof SpeechRecognitionAPI>> | null>(null);
+  type RecognitionInstance = InstanceType<SpeechRecognitionCtor>;
+  const recognitionRef = useRef<RecognitionInstance | null>(null);
   const transcriptRef = useRef("");
 
   const desktop = typeof window !== "undefined" && isDesktop();
