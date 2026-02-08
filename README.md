@@ -84,3 +84,22 @@ So: **text-only** detection uses regex (and optional text LLM). **Image-based** 
 - `supabase/schema.sql` — SQL for Supabase (e.g. liked_products, chat_history, RLS).
 
 See `DEPLOYMENT.md` for hosting frontend and backend separately (e.g. Vercel + EC2) and setting `NEXT_PUBLIC_API_URL` and CORS.
+
+---
+
+## Security (what’s in place and what’s not)
+
+**In place**
+
+- **Input hardening** — User messages are sanitized (max length, blocklisted prompt-injection phrases) before being sent to the LLM. System prompts are wrapped with “untrusted input” instructions and JSON-only output.
+- **Rate limiting** — API is rate-limited (default 30 requests/minute per IP) to reduce abuse.
+- **CORS** — Allowed origins are configured via `CORS_ORIGINS` (no wildcard by default).
+- **Security headers** — Responses send `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, `Referrer-Policy`.
+- **URL validation** — Product URLs must be `http`/`https` only (no `javascript:` etc.). Add-to-cart and product-detail flows validate that the page still exists before use.
+- **Secrets** — API keys (OpenAI, SerpAPI) live in `.env`; `.env` is gitignored. Use `.env.example` as a template; never commit real keys.
+
+**Gaps / production notes**
+
+- **Backend has no authentication** — All `/api/*` endpoints are public. Anyone who can reach the API can call parse-intent, discover, rank, transcribe, etc. User identity exists only in the frontend (Supabase) for chat history and liked products; the FastAPI server does not verify tokens.
+- **Session is not user-bound** — Cart/rank state is stored in memory keyed by `session_id` (default `"default"`). The frontend does not send a user or session token, so backend session isolation is not per-user. Clearing the cart on sign-out is done in the frontend only.
+- **Production** — For a public deployment, restrict `CORS_ORIGINS` to your frontend origin(s). If the API is exposed to the internet, consider adding authentication (e.g. validate Supabase JWT on sensitive routes) and binding sessions to the authenticated user.
